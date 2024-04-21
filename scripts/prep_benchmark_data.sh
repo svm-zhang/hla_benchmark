@@ -4,13 +4,17 @@ function info() {
   echo "[$1] INFO: $2"
 }
 
+function error() {
+  echo "[$1:$2] ERROR: $3" 1>&2
+}
+
 function download_bam() {
   local url=$1
   local outdir=$2
 
   cmd="aws s3 cp --no-sign-request ${url} ${outdir} --recursive --exclude \"*\" --include \"*mapped*.bam\" "
   if ! eval "${cmd}"; then
-    echo "[ERROR] Download BAM using aws s3 cp failed"
+    error "${FUNCNAME[0]}" "${LINENO}" "Download BAM using aws s3 cp failed"
     exit 1
   fi
 
@@ -22,14 +26,14 @@ function run_bam2fq() {
   local r2=$3
 
   if [ ! -f "${bam}" ]; then
-    echo "[ERROR] Cannot find the given ${bam} to extract fastq"
+    error "${FUNCNAME[0]}" "${LINENO}" "Cannot find the given ${bam} to extract fastq"
     exit 1
   fi
 
   prefix="${bam}.tmp."
   cmd="samtools sort -T${prefix} -@${thread} -m 2G -n ${bam} | samtools bam2fq -1 ${r1} -2 ${r2} -0 /dev/null -s /dev/null -"
   if ! eval "${cmd}"; then
-    echo "[ERROR] Extract FQ from ${bam} failed"
+    error "${FUNCNAME[0]}" "${LINENO}" "Extract FQ from ${bam} failed"
     exit 1
   fi
 
