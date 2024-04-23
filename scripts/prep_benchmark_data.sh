@@ -65,6 +65,13 @@ s3_url="s3://1000genomes/phase3/data/${sample_id}/exome_alignment/"
 download_done="${log_dir}/${sample_id}.download.done"
 if [ ! -f "${download_done}" ]; then
   download_bam "${s3_url}" "${bam_dir}"
+  nbam=$( find "${bam_dir}" -name "*.bam" | wc -l )
+  if [ "${nbam}" == 0 ]; then
+    info "main" "No BAM files were downloaded"
+    info "main" "Clean folder. Exit"
+    rm -r "${sample_dir}"
+    exit 0
+  fi
   touch "${download_done}"
 else
   info "main" "Previous download was done. Skip"
