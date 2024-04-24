@@ -6,7 +6,10 @@ from pathlib import Path, PosixPath
 from typing import Optional
 
 import argparse
-import sys
+import shlex
+
+
+CmdArg = str | int | bool | float | Path
 
 
 @dataclass
@@ -311,7 +314,7 @@ class Command:
 
 
 def parse_path(
-    path: PathLike,
+    path: Path | str,
     *,
     expanduser: bool = True,
 ) -> Path:
@@ -368,7 +371,7 @@ def parse_path(
 
 
 def check_path(
-    path: PathLike,
+    path: Path | str,
     check_is_file: bool = False,
     check_is_dir: bool = False,
     check_exists: bool = False,
@@ -744,7 +747,7 @@ def slurmify_hlareforge(args: argparse.Namespace):
     job_dir = args.wkdir / "job_test"
     make_dir(path=job_dir, parents=True, exist_ok=True)
 
-    cmd = make_hlatyping(
+    cmd = make_hlareforge(
         sample=args.sample,
         r1=args.r1,
         r2=args.r2,
