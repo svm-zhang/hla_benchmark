@@ -1,70 +1,70 @@
 from __future__ import annotations
 
-from collections import namedtuple
 from dataclasses import dataclass
-from pathlib import Path, PosixPath
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Protocol
 
 import argparse
-import shlex
+import sys
 
-
-CmdArg = str | int | bool | float | Path
-
-
-@dataclass
-class JobLog:
-    done: Path
-    fail: Path
-    stdout: Path
-    stderr: Path
-
-
-def setup_job_log_files(logdir: Path, job_name: str) -> JobLog:
-
-    make_dir(path=logdir, parents=True, exist_ok=True)
-
-    joblog = JobLog(
-        done=logdir / f"{job_name}.done",
-        fail=logdir / f"{job_name}.fail",
-        stdout=logdir / f"{job_name}.stdout",
-        stderr=logdir / f"{job_name}.stderr",
-    )
-
-    return joblog
+from command import Command, cook_hlareforge_cmd
+from pathio import parse_path, make_dir, check_path
 
 
 def parse_cmd() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument(
         "--sample",
         metavar="STR",
         type=str,
         required=True,
         help="specify sample ID",
     )
-    parser.add_argument(
+    parent_parser.add_argument(
         "--wkdir",
         metavar="DIR",
         type=parse_path,
         required=True,
         help="specify path to output directory",
     )
-    parser.add_argument(
+    parent_parser.add_argument(
         "--freq",
         metavar="FILE",
         type=parse_path,
         required=True,
         help="specify HLA population frequency file",
     )
-    parser.add_argument(
+    parent_parser.add_argument(
+        "--scheduler",
+        metavar="STR",
+        type=str,
+        default="slurm",
+        choices=["slurm", "sge", "bash"],
+        help="specify name of job scheduler (slurm, sge, bash) [slurm]",
+    )
+    parent_parser.add_argument(
         "--overwrite",
         action="store_true",
         help="specify whether or not to overwrite job file",
     )
-    commands = parser.add_subparsers(title="Commands", dest="command")
+    parent_parser.add_argument(
+        "--nproc",
+        metavar="INT",
+        type=int,
+        default=8,
+        help="specify the number of process requested [8]",
+    )
+    parent_parser.add_argument(
+        "--ram",
+        metavar="INT",
+        type=int,
+        default=4,
+        help="specify the maximum RAM requested in GB [4]",
+    )
 
-    opti = commands.add_parser("opti")
+    commands = parser.add_subparsers(title="Commands", dest="command")
+    opti = commands.add_parser("opti", parents=[parent_parser])
     opti.add_argument(
         "--hlaref",
         metavar="FILE",
@@ -88,7 +88,7 @@ def parse_cmd() -> argparse.ArgumentParser:
     )
     opti.set_defaults(func=slurmify_hlareforge)
 
-    polysolver = commands.add_parser("polysolver")
+    polysolver = commands.add_parser("polysolver", parents=[parent_parser])
     polysolver.add_argument(
         "--bam",
         metavar="FILE",
@@ -129,533 +129,110 @@ def parse_cmd() -> argparse.ArgumentParser:
     return parser
 
 
-class Command:
-    """Representation of command
+@dataclass
+class Job:
+    name: str
+    resource: ResourceToAsk
+    log: JobLog
+    script: Path
 
-    A Command object is represented by a list of arguments
-    (str). It is defined with various operations including
-    + (append), | (pipe), > (STDOUT direct), >> (STDOUT append),
-    2> (STDERR direct), 2>> (STDERR append), 2>&1 (redirect STDERR
-    to STDOUT), 1>&2 (redirect STDOUT to STDERR).
 
-    Attributes
-    ----------
+@dataclass
+class ResourceToAsk:
+    nproc: int = 1
+    ram: int = 4
+    ntask: int = 1
+    nodes: int = 1
 
-    args : list of str
-        list of arguments in a Command object
 
-    """
+@dataclass
+class JobLog:
+    stdout: Path
+    stderr: Path
+    donefile: Path
+    failfile: Path
 
-    def __init__(self, *args: CmdArg) -> None:
-        self.__args = args
 
-    @property
-    def args(self) -> list[str]:
-        """Return command arguments
+class JobHeader(Protocol):
+    def make(self, job: Job) -> str:
+        """Make job header section"""
+        ...
 
-        Returns
-        -------
 
-        list of str
+class SlurmJobHeader:
+    def make(self, job: Job) -> str:
+        """Make job header section"""
 
-        """
+        directive_prefix = "#SBATCH"
+        header = ["#!/usr/bin/env bash\n"]
+        header += [f'{directive_prefix} --job-name="{job.name}"']
+        header += [f"{directive_prefix} --output={str(job.log.stdout)}"]
+        header += [f"{directive_prefix} --error={str(job.log.stderr)}"]
 
-        if isinstance(self.__args, str):
-            self.__args = self.__split(self.__args)
+        header += [f"#{directive_prefix} --ntasks={job.resource.ntask}"]
+        header += [f"#{directive_prefix} --nodes={job.resource.nodes}"]
+        header += [f"#{directive_prefix} --cpus-per-task={job.resource.nproc}"]
+        header += [f"#{directive_prefix} --mem={job.resource.ram}G"]
 
-        # Make sure Path object converted to string literal
-        return [
-            arg if isinstance(arg, str) else str(arg) for arg in self.__args
-        ]
+        return "\n".join(header)
 
-    def __add__(self, cmd2: Command | list[CmdArg]) -> Command:
-        """Append command arguments
 
-        Overriding the build-in + operation
+class SGEJobHeader:
+    def make(self, job: Job) -> str:
+        """Make job header section"""
 
-        Parameters
-        ----------
+        directive_prefix = "#$"
+        header = []
+        header += [f"{directive_prefix} -N {job.name}"]
+        header += [f"{directive_prefix} -o {str(job.log.stdout)}"]
+        header += [f"{directive_prefix} -e {str(job.log.stderr)}"]
+        header += [f"{directive_prefix} -pe shm {job.resource.nproc / 2}"]
+        header += [f"{directive_prefix} -l h_veme {job.resource.ram}G"]
 
-        cmd2 : Command or list of CmdArg
-            The Command or argument to be appended to the current command
+        return "\n".join(header)
 
-        Returns
-        -------
 
-        Command object
+def setup_job(dir: Path, jobname: str, job_resource: ResourceToAsk) -> Job:
 
-        """
-
-        cmd1 = self
-
-        if not isinstance(cmd2, Command):
-            cmd2 = Command(*cmd2)
-
-        return Command(*cmd1.args, *cmd2.args)
-
-    def __or__(self, cmd2: Command) -> Command:
-        """Pipe one command to the next
-
-        Overriding the built-in Bitwise | operation
-
-        Parameters
-        ----------
-
-        cmd2 : Command
-            Command object that the current Command pipes to
-
-        Returns
-        -------
-
-        Command object
-
-        """
-
-        return self + Command("|") + cmd2
-
-    def __split(self, cmd: str) -> list[str]:
-        """Split command string into a list of strings
-
-        Parameters
-        ----------
-
-        cmd : str
-            command string literal
-
-        Returns
-        -------
-
-        list of str
-
-        Examples
-        --------
-
-        >>>cmd = "bwa mem -M -t 8 reference.fa r1.fq.gz r2.fq.gz"
-        >>>Command.__split(cmd=cmd)
-        ["bwa", "mem", "-M", "-t" "8", "reference.fa", "r1.fq.gz", "r2.fq.gz"]
-
-        """
-
-        return shlex.split(cmd)
-
-    def direct_to_stdout(
-        self, stdout: Path, *, append: bool = False
-    ) -> Command:
-        """Direct to STDOUT
-
-        Parameters
-        ----------
-
-        stdout : Path
-            Path object to a file hosing STDOUT
-
-        append : bool, default False
-            Specify to append mode (>>)
-
-        Returns
-        -------
-
-        Command object
-
-        """
-
-        rd = ">" if not append else ">>"
-
-        return self + Command(f"{rd}", stdout)
-
-    def direct_to_stderr(
-        self, stderr: Path, *, append: bool = False
-    ) -> Command:
-        """Direct to STDERR
-
-        Parameters
-        ----------
-
-        stderr : Path
-            Path object to a file hosing STDERR
-
-        append : bool, default False
-            Specify to append mode (2>>)
-
-        Returns
-        -------
-
-        Command object
-
-        """
-
-        rd = ">" if not append else ">>"
-
-        return self + Command(f"2{rd}", stderr)
-
-    def redirect_stdout_to_stderr(self) -> Command:
-        """Redirect STDOUT stream to STDERR by 1>&2
-
-        Returns
-        -------
-
-        Command object
-
-        """
-
-        return self + Command(">&2")
-
-    def redirect_stderr_to_stdout(self) -> Command:
-        """Redirect STDERR stream to STDOUT by 2>&1
-
-        Returns
-        -------
-
-        Command object
-
-        """
-
-        return self + Command("2>&1")
-
-
-def parse_path(
-    path: Path | str,
-    *,
-    expanduser: bool = True,
-) -> Path:
-    """Parse a given path.
-
-    Input path can be either a Path or string type
-
-    This function will convert all non-Path type path
-    to Path type. If the given path is PosixPath type,
-    the returned path will be expanded and be absolute
-    by default.
-
-    Parameters
-    ----------
-
-    path : PathLike
-        Path object or string to a give path
-
-    expanduser : bool, default True
-        Specify to expand a PosixPath path, e.g. ~
-
-    Returns
-    -------
-
-    Path object
-
-    See Also
-    --------
-
-    pathlib : https://docs.python.org/3/library/pathlib.html
-
-    Examples
-    --------
-
-    [WIP]
-
-    """
-    p: Path
-    if isinstance(path, Path):
-        p = path
-    elif isinstance(path, str) and (
-        path.startswith("s3:") or path.startswith("gcs:")
-    ):
-        raise ValueError(f"Cloud-based path is not supported: {path}")
-    else:
-        p = Path(path)
-
-    if isinstance(p, PosixPath):
-        if expanduser:
-            p = p.expanduser()
-        p = p.resolve()
-
-    return p
-
-
-def check_path(
-    path: Path | str,
-    check_is_file: bool = False,
-    check_is_dir: bool = False,
-    check_exists: bool = False,
-) -> None:
-    """Check a given path
-
-    Check if a given path is a file or
-    is a directory or exists. Because a path
-    can only point to either a file or a directory,
-    the function will fail when checking a path for
-    both
-
-    This function only works on Unix- and
-    POSIX-compatiable path
-
-    Parameters
-    ----------
-
-    path : PathLike
-        Path object or string to a give path
-
-    check_is_file : bool, default False
-        Specify to check if a path points to a file
-
-    check_is_dir : bool, default False
-        Specify to check if a path points to a dir
-
-    check_exists : bool, default False
-        Specify to check if a path exists
-
-    Returns
-    -------
-
-    None
-
-    See Also
-    --------
-
-    pathlib.Path : https://docs.python.org/3/library/pathlib.html
-
-    Examples
-    --------
-
-
-    """
-    if check_is_file and check_is_dir:
-        raise ValueError(
-            "A given path can point to either a file or a directory. Not both"
-        )
-
-    if not isinstance(path, Path):
-        path = parse_path(path)
-
-    if not isinstance(path, PosixPath):
-        raise ValueError(
-            f"Only Unix and POSIX-compatible paths are allowed: {path}"
-        )
-
-    if check_is_file and not path.is_file():
-        raise ValueError(f"Path does not point to a regular file: {path}")
-
-    if check_is_dir and not path.is_dir():
-        raise ValueError(f"Path does not point to a directory: {path}")
-
-    if check_exists and not path.exists():
-        raise OSError(f"Path provided does not exist: {path}")
-
-
-def make_dir(
-    path: Path,
-    *,
-    mode: int = 511,
-    parents: bool = False,
-    exist_ok: bool = False,
-) -> None:
-    """Make directory
-
-    Parameters
-    ----------
-
-    path : PathLike
-        Path object or string to a give path
-
-    mode : int, default 511
-        Determine file mode and access flag
-        by combining umask value
-
-    parents : bool, default False
-        Specify to create any missing parents
-        in the path
-
-    exists_ok : bool, default False
-        Specify to allow target directory given
-        by the path to exist
-
-    Returns
-    -------
-
-    None
-
-    See Also
-    --------
-
-    pathlib.Path.mkdir : https://docs.python.org/3/library/pathlib.html
-
-    """
-
-    if not isinstance(path, Path):
-        path = parse_path(path)
-
-    if not path.exists():
-        path.mkdir(mode=mode, parents=parents, exist_ok=exist_ok)
-
-
-def get_parent_dir(p: Path, level: int = 0) -> Path:
-
-    parent_dirs = p.parents
-
-    if level > len(parent_dirs):
-        raise ValueError(
-            (
-                f"level {level} cannot beyond the number of logical ancestors "
-                f"of the given path: {len(parent_dirs)}"
-            )
-        )
-
-    return parent_dirs[level]
-
-
-def add_header(
-    scheduler: str,
-    job_name: str,
-    stdout: Path,
-    stderr: Path,
-    *,
-    threads: int = 1,
-    ram: int = 4,
-) -> str:
-    Header = namedtuple(
-        "Header", ["ncore", "ram", "job_name", "stdout", "stderr"]
+    joblog = setup_job_logfiles(dir=dir, fileprefix=jobname)
+    jobscript = setup_job_script(
+        dir=dir, scheduler="slurm", fileprefix=jobname
+    )
+    return Job(
+        name=jobname, resource=job_resource, log=joblog, script=jobscript
     )
 
-    header = []
+
+def setup_job_logfiles(dir: Path, fileprefix: str = "job") -> JobLog:
+
+    logdir = dir / "log"
+    make_dir(path=logdir, parents=True, exist_ok=True)
+    stdout = logdir / f"{fileprefix}.stdout"
+    stderr = logdir / f"{fileprefix}.stderr"
+    donefile = logdir / f"{fileprefix}.done"
+    failfile = logdir / f"{fileprefix}.fail"
+
+    return JobLog(
+        stdout=stdout, stderr=stderr, donefile=donefile, failfile=failfile
+    )
+
+
+def setup_job_script(
+    dir: Path, fileprefix: str = "script", scheduler: str = "slurm"
+) -> Path:
+    jobdir = dir / "job"
+    make_dir(path=jobdir, parents=True, exist_ok=True)
+
     if scheduler == "slurm":
-        ncore = int(threads) if threads > 0 else 1
-        H = Header(
-            ncore=ncore,
-            ram=ram,
-            job_name=job_name,
-            stdout=stdout,
-            stderr=stderr,
-        )
-        header += [f'#SBATCH --job-name="{H.job_name}"']
-        header += [f"#SBATCH --output={str(H.stdout)}"]
-        header += [f"#SBATCH --error={str(H.stderr)}"]
-
-        header += ["#SBATCH --ntasks=1"]
-        header += [f"#SBATCH --cpus-per-task={H.ncore}"]
-        header += [f"#SBATCH --mem={H.ram}G"]
-
-    elif scheduler == "pbs":
-        raise ValueError("no pbs job support yet")
-
+        return jobdir / f"{fileprefix}.slurm"
     elif scheduler == "sge":
-        H = Header(
-            ncore=threads / 2,
-            ram=ram,
-            job_name=job_name,
-            stdout=stdout,
-            stderr=stderr,
-        )
-
-        header += [f"#$ -N {H.job_name}"]
-        header += [f"#$ -o {str(H.stdout)}"]
-        header += [f"#$ -e {str(H.stderr)}"]
-
-        header += [f"#$ -pe shm {H.ncore}"]
-        header += [f"#$ -l h_vmem={H.ram}G"]
-
-    return "\n".join(header)
-
-
-def add_command(command: list[str]) -> str:
-    return " ".join(command)
-
-
-def add_rc_status_block(done: Path, fail: Path) -> str:
-    return f"""
-if [[ $? != 0 ]]; then
-    touch {fail}
-    exit 1
-else
-    touch {done}
-    exit 0
-fi
-
-    """
-
-
-def to_job(
-    command: list[str],
-    threads: int,
-    ram: int,
-    job_name: str,
-    joblog: JobLog,
-    outdir: Path,
-    *,
-    overwrite: bool = False,
-    scheduler: str = "slurm",
-) -> Path:
-    job_str = ["#!/usr/bin/env bash"]
-
-    # FIXME: forget about pbs for now
-    if scheduler != "native":
-        job_str += [
-            add_header(
-                scheduler=scheduler,
-                job_name=job_name,
-                stdout=joblog.stdout,
-                stderr=joblog.stderr,
-                threads=threads,
-                ram=ram,
-            )
-        ]
-
-    job_str += [add_command(command=command)]
-
-    job_str += [add_rc_status_block(done=joblog.done, fail=joblog.fail)]
-
-    # FIXME: fix suffix scope
-    if scheduler == "native":
-        suffix = ".sh"
-
-    elif scheduler == "slurm":
-        suffix = ".slurm"
-
-    elif scheduler == "pbs":
-        suffix = ".pbs"
-
+        return jobdir / f"{fileprefix}.sge"
+    elif scheduler == "bash":
+        return jobdir / f"{fileprefix}.sh"
     else:
-        suffix = ".sge"
-
-    job_file = outdir / f"{job_name}{suffix}"
-
-    if not job_file.exists() or overwrite:
-        with open(job_file, "w") as fOUT:
-            fOUT.write("\n\n".join(job_str))
-
-    return job_file
-
-
-def make_hlareforge(
-    sample: str,
-    r1: Path,
-    r2: Path,
-    hlaref: Path,
-    freq: Path,
-    outdir: Path,
-    race: str = "Unknown",
-    joblog: Optional[JobLog] = None,
-) -> Command:
-    cmd = Command(
-        "hlatyping",
-        "--sample",
-        sample,
-        "--r1",
-        r1,
-        "--r2",
-        r2,
-        "--hla_ref",
-        hlaref,
-        "--freq",
-        freq,
-        "--race",
-        race,
-        "--outdir",
-        outdir,
-    )
-
-    if joblog is not None:
-        cmd = cmd.direct_to_stdout(stdout=joblog.stdout)
-        cmd = cmd.direct_to_stderr(stderr=joblog.stderr)
-
-    return cmd
+        print("Unrecognized scheduler value")
+        print("Supports: slurm, sge, and bash")
+        sys.exit(1)
 
 
 def make_polysolver(
@@ -699,17 +276,61 @@ def make_polysolver(
     return cmd
 
 
+def add_rc_status_block(joblog: JobLog) -> str:
+    return f"""
+if [[ $? != 0 ]]; then
+    touch {joblog.failfile}
+    exit 1
+else
+    touch {joblog.donefile}
+    exit 0
+fi
+
+    """
+
+
+def make_jobscript(
+    commands: list[Command],
+    job: Job,
+    scheduler: str = "slurm",
+    overwrite: bool = False,
+):
+
+    header = ""
+    if scheduler == "slurm":
+        header = SlurmJobHeader().make(job=job)
+    elif scheduler == "sge":
+        header = SGEJobHeader().make_header(job=job)
+    elif scheduler == "bash":
+        header = "#!/usr/bin/env bash\n"
+    else:
+        print("Unrecognized scheduler value")
+        print("Supports: slurm, sge, and bash")
+        sys.exit(1)
+
+    body = "\n".join([" ".join(command.args) for command in commands])
+
+    tail = add_rc_status_block(joblog=job.log)
+
+    content = [header, body, tail]
+
+    if not job.script.exists() or overwrite or job.script.stat().st_size == 0:
+        with open(job.script, "w") as fOUT:
+            fOUT.write("\n\n".join(content))
+
+
 def slurmify_polysolver(args: argparse.Namespace) -> None:
 
     check_path(path=args.bam, check_is_file=True, check_exists=True)
     outdir = args.wkdir / "polysolver_hlatyping"
 
     job_name = f"polysolver.{args.sample}"
-    joblog = setup_job_log_files(
+    joblog = setup_job_logfiles(
         logdir=args.wkdir / "log_test", job_name=job_name
     )
-    job_dir = args.wkdir / "job_test"
-    make_dir(path=job_dir, parents=True, exist_ok=True)
+    job_script = setup_job_script(
+        dir=args.wkdir, scheduler="slurm", fileprefix=job_name
+    )
 
     cmd = make_polysolver(
         sample=args.sample,
@@ -723,49 +344,37 @@ def slurmify_polysolver(args: argparse.Namespace) -> None:
         joblog=joblog,
     )
 
-    to_job(
-        command=cmd.args,
-        threads=8,
-        ram=12,
-        job_name=job_name,
-        joblog=joblog,
-        outdir=job_dir,
-        overwrite=args.overwrite,
-    )
+    # to_job(
+    #    command=cmd.args,
+    #    threads=8,
+    #    ram=12,
+    #    job_name=job_name,
+    #    joblog=joblog,
+    #    outdir=job_dir,
+    #    overwrite=args.overwrite,
+    # )
 
 
 def slurmify_hlareforge(args: argparse.Namespace):
 
     check_path(path=args.r1, check_is_file=True, check_exists=True)
     check_path(path=args.r2, check_is_file=True, check_exists=True)
-    outdir = args.wkdir / "test"
 
-    job_name = f"hlatyping.{args.sample}"
-    joblog = setup_job_log_files(
-        logdir=args.wkdir / "log_test", job_name=job_name
-    )
-    job_dir = args.wkdir / "job_test"
-    make_dir(path=job_dir, parents=True, exist_ok=True)
+    jobname = f"hlareforged.{args.sample}"
+    resource = ResourceToAsk(nproc=args.nproc, ram=args.ram)
+    job = setup_job(dir=args.wkdir, jobname=jobname, job_resource=resource)
 
-    cmd = make_hlareforge(
+    cmd = cook_hlareforge_cmd(
         sample=args.sample,
         r1=args.r1,
         r2=args.r2,
         hlaref=args.hlaref,
         freq=args.freq,
-        outdir=outdir,
-        joblog=joblog,
+        outdir=args.wkdir,
+        joblog=job.log,
     )
 
-    to_job(
-        command=cmd.args,
-        threads=8,
-        ram=12,
-        job_name=job_name,
-        joblog=joblog,
-        outdir=job_dir,
-        overwrite=args.overwrite,
-    )
+    make_jobscript(commands=[cmd], job=job, scheduler=args.scheduler)
 
 
 def main() -> None:
