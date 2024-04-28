@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Protocol
 
 import argparse
 import sys
 
-from command import Command, cook_hlareforge_cmd
-from pathio import parse_path, make_dir, check_path
+from command import Command, cook_hlareforge_cmd, cook_polysolver_cmd
+from pathio import parse_path, make_dir, check_path, get_parent_dir
 
 
 def parse_cmd() -> argparse.ArgumentParser:
@@ -20,13 +20,6 @@ def parse_cmd() -> argparse.ArgumentParser:
         type=str,
         required=True,
         help="specify sample ID",
-    )
-    parent_parser.add_argument(
-        "--wkdir",
-        metavar="DIR",
-        type=parse_path,
-        required=True,
-        help="specify path to output directory",
     )
     parent_parser.add_argument(
         "--freq",
@@ -66,6 +59,13 @@ def parse_cmd() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(title="Commands", dest="command")
     opti = commands.add_parser("opti", parents=[parent_parser])
     opti.add_argument(
+        "--wkdir",
+        metavar="DIR",
+        type=parse_path,
+        required=True,
+        help="specify path to output directory",
+    )
+    opti.add_argument(
         "--hlaref",
         metavar="FILE",
         type=parse_path,
@@ -95,6 +95,13 @@ def parse_cmd() -> argparse.ArgumentParser:
         type=parse_path,
         required=True,
         help="specify BAM file",
+    )
+    polysolver.add_argument(
+        "--out_bam",
+        metavar="FILE",
+        type=parse_path,
+        required=True,
+        help="specify path to output realigned BAM file",
     )
     polysolver.add_argument(
         "--genome",
@@ -169,10 +176,10 @@ class SlurmJobHeader:
         header += [f"{directive_prefix} --output={str(job.log.stdout)}"]
         header += [f"{directive_prefix} --error={str(job.log.stderr)}"]
 
-        header += [f"#{directive_prefix} --ntasks={job.resource.ntask}"]
-        header += [f"#{directive_prefix} --nodes={job.resource.nodes}"]
-        header += [f"#{directive_prefix} --cpus-per-task={job.resource.nproc}"]
-        header += [f"#{directive_prefix} --mem={job.resource.ram}G"]
+        header += [f"{directive_prefix} --ntasks={job.resource.ntask}"]
+        header += [f"{directive_prefix} --nodes={job.resource.nodes}"]
+        header += [f"{directive_prefix} --cpus-per-task={job.resource.nproc}"]
+        header += [f"{directive_prefix} --mem={job.resource.ram}G"]
 
         return "\n".join(header)
 
@@ -235,47 +242,6 @@ def setup_job_script(
         sys.exit(1)
 
 
-def make_polysolver(
-    sample: str,
-    bam: Path,
-    genome: Path,
-    nv_idx: Path,
-    bed: Path,
-    tag: Path,
-    freq: Path,
-    outdir: Path,
-    race: str = "Unknown",
-    joblog: Optional[JobLog] = None,
-) -> Command:
-    cmd = Command(
-        "jspolysolver",
-        "--sample",
-        sample,
-        "--bam",
-        bam,
-        "--genome",
-        genome,
-        "--nv_idx",
-        nv_idx,
-        "--bed",
-        bed,
-        "--tag",
-        tag,
-        "--freq",
-        freq,
-        "--race",
-        race,
-        "--outdir",
-        outdir,
-    )
-
-    if joblog is not None:
-        cmd = cmd.direct_to_stdout(stdout=joblog.stdout)
-        cmd = cmd.direct_to_stderr(stderr=joblog.stderr)
-
-    return cmd
-
-
 def add_rc_status_block(joblog: JobLog) -> str:
     return f"""
 if [[ $? != 0 ]]; then
@@ -322,17 +288,12 @@ def make_jobscript(
 def slurmify_polysolver(args: argparse.Namespace) -> None:
 
     check_path(path=args.bam, check_is_file=True, check_exists=True)
-    outdir = args.wkdir / "polysolver_hlatyping"
 
-    job_name = f"polysolver.{args.sample}"
-    joblog = setup_job_logfiles(
-        logdir=args.wkdir / "log_test", job_name=job_name
-    )
-    job_script = setup_job_script(
-        dir=args.wkdir, scheduler="slurm", fileprefix=job_name
-    )
-
-    cmd = make_polysolver(
+    jobname = f"hlapolysolver.{args.sample}"
+    resource = ResourceToAsk(nproc=args.nproc, ram=args.ram)
+    wkdir = get_parent_dir(p=args.out_bam)
+    job = setup_job(dir=wkdir, jobname=jobname, job_resource=resource)
+    cmd = cook_polysolver_cmd(
         sample=args.sample,
         bam=args.bam,
         genome=args.genome,
@@ -340,19 +301,15 @@ def slurmify_polysolver(args: argparse.Namespace) -> None:
         bed=args.bed,
         tag=args.tag,
         freq=args.freq,
-        outdir=outdir,
-        joblog=joblog,
+        outbam=args.out_bam,
     )
 
-    # to_job(
-    #    command=cmd.args,
-    #    threads=8,
-    #    ram=12,
-    #    job_name=job_name,
-    #    joblog=joblog,
-    #    outdir=job_dir,
-    #    overwrite=args.overwrite,
-    # )
+    make_jobscript(
+        commands=[cmd],
+        job=job,
+        scheduler=args.scheduler,
+        overwrite=args.overwrite,
+    )
 
 
 def slurmify_hlareforge(args: argparse.Namespace):
@@ -371,10 +328,14 @@ def slurmify_hlareforge(args: argparse.Namespace):
         hlaref=args.hlaref,
         freq=args.freq,
         outdir=args.wkdir,
-        joblog=job.log,
     )
 
-    make_jobscript(commands=[cmd], job=job, scheduler=args.scheduler)
+    make_jobscript(
+        commands=[cmd],
+        job=job,
+        scheduler=args.scheduler,
+        overwrite=args.overwrite,
+    )
 
 
 def main() -> None:
