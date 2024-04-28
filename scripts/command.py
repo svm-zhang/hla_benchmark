@@ -199,7 +199,6 @@ def cook_hlareforge_cmd(
     freq: Path,
     outdir: Path,
     race: str = "Unknown",
-    joblog: Optional[JobLog] = None,
 ) -> Command:
     cmd = Command(
         "bash",
@@ -218,8 +217,41 @@ def cook_hlareforge_cmd(
         outdir,
     )
 
-    if joblog is not None:
-        cmd = cmd.direct_to_stdout(stdout=joblog.stdout)
-        cmd = cmd.direct_to_stderr(stderr=joblog.stderr)
+    return cmd
+
+
+def cook_polysolver_cmd(
+    sample: str,
+    bam: Path,
+    genome: Path,
+    nv_idx: Path,
+    bed: Path,
+    tag: Path,
+    freq: Path,
+    outbam: Path,
+    race: str = "Unknown",
+) -> Command:
+    cmd = Command(
+        "bash",
+        "/data/simo/resource/1kg/hlatypingReforged/scripts/hlapolysolver.sh",
+        "--sample",
+        sample,
+        "--bam",
+        bam,
+        "--genome",
+        genome,
+        "--nv_idx",
+        nv_idx,
+        "--bed",
+        bed,
+        "--tag",
+        tag,
+        "--freq",
+        freq,
+        "--race",
+        race,
+        "--out_bam",
+        outbam,
+    )
 
     return cmd
