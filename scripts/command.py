@@ -201,8 +201,7 @@ def cook_hlareforge_cmd(
     race: str = "Unknown",
 ) -> Command:
     cmd = Command(
-        "bash",
-        "/data/simo/resource/1kg/hlatypingReforged/scripts/hlareforged.sh",
+        "hlareforged",
         "--sample",
         sample,
         "--r1",
@@ -223,7 +222,6 @@ def cook_hlareforge_cmd(
 def cook_polysolver_cmd(
     sample: str,
     bam: Path,
-    genome: Path,
     nv_idx: Path,
     bed: Path,
     tag: Path,
@@ -232,14 +230,11 @@ def cook_polysolver_cmd(
     race: str = "Unknown",
 ) -> Command:
     cmd = Command(
-        "bash",
-        "/data/simo/resource/1kg/hlatypingReforged/scripts/hlapolysolver.sh",
+        "hlapolysolver",
         "--sample",
         sample,
         "--bam",
         bam,
-        "--genome",
-        genome,
         "--nv_idx",
         nv_idx,
         "--bed",
