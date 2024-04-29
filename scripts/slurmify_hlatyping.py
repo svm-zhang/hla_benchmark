@@ -104,13 +104,6 @@ def parse_cmd() -> argparse.ArgumentParser:
         help="specify path to output realigned BAM file",
     )
     polysolver.add_argument(
-        "--genome",
-        metavar="FILE",
-        type=parse_path,
-        required=True,
-        help="specify HLA reference sequence in FASTA",
-    )
-    polysolver.add_argument(
         "--nv_idx",
         metavar="FILE",
         type=parse_path,
@@ -296,7 +289,6 @@ def slurmify_polysolver(args: argparse.Namespace) -> None:
     cmd = cook_polysolver_cmd(
         sample=args.sample,
         bam=args.bam,
-        genome=args.genome,
         nv_idx=args.nv_idx,
         bed=args.bed,
         tag=args.tag,
