@@ -39,25 +39,29 @@ def run_hlareforged(args: argparse.Namespace):
 @jobfy
 def run_hlapolysolver(args: argparse.Namespace):
 
-    return Command(
+    cmd = Command(
         "hlapolysolver",
         "--sample",
         args.sample,
         "--bam",
         args.bam,
-        "--nv_idx",
-        args.nv_idx,
+        "--hla_ref",
+        args.hlaref,
         "--bed",
         args.bed,
         "--tag",
         args.tag,
-        "--freq",
-        args.freq,
-        "--out_bam",
-        args.out_bam,
+        "--outdir",
+        args.wkdir,
         "--nproc",
         args.nproc,
     )
+    if args.realign_only:
+        cmd += ["--realn_only"]
+    else:
+        cmd += ["--freq", args.freq]
+
+    return cmd
 
 
 def main() -> None:
