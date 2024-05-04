@@ -16,11 +16,25 @@ def parse_cmd() -> argparse.ArgumentParser:
         help="specify sample ID",
     )
     parent_parser.add_argument(
+        "--hlaref",
+        metavar="FILE",
+        type=parse_path,
+        required=True,
+        help="specify HLA reference in Fasta",
+    )
+    parent_parser.add_argument(
         "--freq",
         metavar="FILE",
         type=parse_path,
         required=True,
         help="specify HLA population frequency file",
+    )
+    parent_parser.add_argument(
+        "--wkdir",
+        metavar="DIR",
+        type=parse_path,
+        required=True,
+        help="specify path to output directory",
     )
     parent_parser.add_argument(
         "--scheduler",
@@ -29,6 +43,11 @@ def parse_cmd() -> argparse.ArgumentParser:
         default="slurm",
         choices=["slurm", "sge", "bash"],
         help="specify name of job scheduler (slurm, sge, bash) [slurm]",
+    )
+    parent_parser.add_argument(
+        "--realign_only",
+        action="store_true",
+        help="specify to only run realigner",
     )
     parent_parser.add_argument(
         "--overwrite",
@@ -53,20 +72,6 @@ def parse_cmd() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(title="Commands", dest="command")
     hlareforged = commands.add_parser("hlareforged", parents=[parent_parser])
     hlareforged.add_argument(
-        "--wkdir",
-        metavar="DIR",
-        type=parse_path,
-        required=True,
-        help="specify path to output directory",
-    )
-    hlareforged.add_argument(
-        "--hlaref",
-        metavar="FILE",
-        type=parse_path,
-        required=True,
-        help="specify HLA reference sequence in FASTA",
-    )
-    hlareforged.add_argument(
         "--r1",
         metavar="FILE",
         type=parse_path,
@@ -79,11 +84,6 @@ def parse_cmd() -> argparse.ArgumentParser:
         type=parse_path,
         required=True,
         help="specify R2 reads in FASTQ",
-    )
-    hlareforged.add_argument(
-        "--realign_only",
-        action="store_true",
-        help="specify to only run realigner",
     )
     hlareforged.add_argument(
         "--nproc_per_job",
@@ -100,20 +100,6 @@ def parse_cmd() -> argparse.ArgumentParser:
         type=parse_path,
         required=True,
         help="specify BAM file",
-    )
-    polysolver.add_argument(
-        "--out_bam",
-        metavar="FILE",
-        type=parse_path,
-        required=True,
-        help="specify path to output realigned BAM file",
-    )
-    polysolver.add_argument(
-        "--nv_idx",
-        metavar="FILE",
-        type=parse_path,
-        required=True,
-        help="specify HLA reference novoindex",
     )
     polysolver.add_argument(
         "--bed",
