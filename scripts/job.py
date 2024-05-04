@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Protocol
 
 from command import Command
-from pathio import make_dir, get_parent_dir
+from pathio import make_dir
 
 import argparse
 
@@ -168,11 +168,7 @@ def jobfy(func):
     def wrapper(args: argparse.Namespace):
         jobname = f"{args.command}.{args.sample}"
         resource = ResourceToAsk(nproc=args.nproc, ram=args.ram)
-        wkdir: Path = None
-        if args.command == "hlareforged":
-            wkdir = args.wkdir
-        else:
-            wkdir = get_parent_dir(p=args.out_bam)
+        wkdir = args.wkdir
         job = setup_job(
             dir=wkdir,
             jobname=jobname,
