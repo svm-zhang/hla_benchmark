@@ -115,5 +115,13 @@ def parse_cmd() -> argparse.ArgumentParser:
         required=True,
         help="specify HLA kmer tag file",
     )
+    polysolver.add_argument(
+        "--fish_mode",
+        metavar="STR",
+        type=str,
+        default="faster",
+        choices=["faster", "fast"],
+        help="specify fishing mode [faster]",
+    )
 
     return parser
