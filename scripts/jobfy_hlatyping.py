@@ -53,6 +53,8 @@ def run_hlapolysolver(args: argparse.Namespace):
         args.tag,
         "--outdir",
         args.wkdir,
+        "--fish_mode",
+        args.fish_mode,
         "--nproc",
         args.nproc,
     )
