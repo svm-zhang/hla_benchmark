@@ -70,7 +70,8 @@ eval_dt[, n_match := apply(
 ), .SDcols = c("p1", "p2", "e1", "e2")]
 print(eval_dt[n_match < 2])
 n_sample <- length(unique(eval_dt$sample))
-n_expect_to_match <- n_sample * 6
+n_genes <- length(unique(eval_dt$gene))
+n_expect_to_match <- n_sample * n_genes * 2
 n_match <- sum(eval_dt$n_match)
 print(n_expect_to_match)
 print(n_match)
