@@ -8,15 +8,21 @@ function error() {
   echo "[$1:$2] ERROR: $3" 1>&2
 }
 
+function die () {
+	rc=$?
+	# when there is argument passing in "$#"
+	# error the message
+	(( $# )) && error "$1" "$2" "$3"
+	exit "$(( rc == 0 ? 1 : rc ))"
+}
+
 function download_bam() {
   local url=$1
   local outdir=$2
 
-  cmd="aws s3 cp --no-sign-request ${url} ${outdir} --recursive --exclude \"*\" --include \"*mapped*.bam\" "
-  if ! eval "${cmd}"; then
-    error "${FUNCNAME[0]}" "${LINENO}" "Download BAM using aws s3 cp failed"
-    exit 1
-  fi
+  aws s3 cp --no-sign-request "$url" "$outdir" --recursive \
+    --exclude "*" --include "*mapped*.bam" \
+    || die "${FUNCNAME[0]}" "$LINENO" "Failed to run aws s3 cp to download"
 
 }
 
@@ -31,17 +37,15 @@ function run_bam2fq() {
   fi
 
   prefix="${bam}.tmp."
-  cmd="samtools sort -T${prefix} -@${thread} -m 2G -n ${bam} | samtools bam2fq -1 ${r1} -2 ${r2} -0 /dev/null -s /dev/null -"
-  if ! eval "${cmd}"; then
-    error "${FUNCNAME[0]}" "${LINENO}" "Extract FQ from ${bam} failed"
-    exit 1
-  fi
+  samtools sort -T"$prefix" -@"$thread" -m 2G -n "$bam" 2>/dev/null\
+    | samtools bam2fq -1 "$r1" -2 "$r2" -0 /dev/null -s /dev/null - \
+    || die "${FUNCNAME[0]}" "$LINENO" "Failed to get Fastq from BAM"
 
 }
 
 sample_id=$1
 wkdir=$2
-thread=4
+thread=$3
 
 sample_dir="${wkdir}/${sample_id}"
 bam_dir="${sample_dir}/bam"
@@ -80,35 +84,30 @@ fi
 mapped_bam=$(find "${bam_dir}" -name "${sample_id}.mapped*.bam")
 unmapped_bam=$(find "${bam_dir}" -name "${sample_id}.unmapped*.bam")
 
-info "main" "Extract Fastq from ${mapped_bam}"
-extract_mapped_done="${log_dir}/${sample_id}.extract.mapped.done"
-m_r1="${fq_dir}/${sample_id}.mapped.R1.fastq.gz"
-m_r2="${fq_dir}/${sample_id}.mapped.R2.fastq.gz"
-if [ ! -f "${extract_mapped_done}" ]; then
-  run_bam2fq "${mapped_bam}" "${m_r1}" "${m_r2}"
-  touch "${extract_mapped_done}"
-else
-  info "main" "Previous extraction was done. Skip"
+if [ ! -f "$mapped_bam" ] && [ ! -f "$unmapped_bam" ]; then
+  info "$0" "$LINENO" "Looks like no BAM files downloaded"
+  info "$0" "$LINENO" "Nothing to do next. Exit now"
+  exit 0
 fi
 
-info "main" "Extract Fastq from ${unmapped_bam}"
-extract_unmapped_done="${log_dir}/${sample_id}.extract.unmapped.done"
-un_r1="${fq_dir}/${sample_id}.unmapped.R1.fastq.gz"
-un_r2="${fq_dir}/${sample_id}.unmapped.R2.fastq.gz"
-if [ ! -f "${extract_unmapped_done}" ]; then
-  run_bam2fq "${unmapped_bam}" "${un_r1}" "${un_r2}"
-  touch "${extract_unmapped_done}"
-else
-  info "main" "Previous extraction was done. Skip"
+sort_bam="${bam_dir}/${sample_id}.merged.so.bam"
+if [ ! -f "$sort_bam" ]; then
+  info "main" "Merge and sort BAMs for ${sample_id}"
+  samtools cat "$mapped_bam" "$unmapped_bam" \
+    | samtools sort -T"${sample_id}_tmp" -@"$thread" -o "$sort_bam" - \
+    || die "$0" "$LINENO" "Failed to cat and sort BAM files"
+
+  samtools index "$sort_bam" \
+    || die "$0" "$LINENO" "Failed to index sorted BAM file"
 fi
 
 final_r1="${fq_dir}/${sample_id}.R1.fastq.gz"
 final_r2="${fq_dir}/${sample_id}.R2.fastq.gz"
-
 if [ ! -f "${final_r1}" ] || [ ! -f "${final_r2}" ]; then
-  cat "${m_r1}" "${un_r1}" > "${final_r1}"
-  cat "${m_r2}" "${un_r2}" > "${final_r2}"
-  rm "${m_r1}" "${m_r2}" "${un_r1}" "${un_r2}"
+  info "main" "Extract Fastq from ${mapped_bam}"
+  run_bam2fq "${sort_bam}" "${final_r1}" "${final_r2}"
+else
+  info "main" "Previous extraction was done. Skip"
 fi
 
 all_done="${log_dir}/${sample_id}.prep.done"
