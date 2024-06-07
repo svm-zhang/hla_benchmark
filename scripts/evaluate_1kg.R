@@ -56,11 +56,11 @@ truth_long_dt[, "tmp" := paste(
   D4_truth,
   collapse = ","
 ), by = list(sample, gene)]
-truth_long_dt <- unique(truth_long_dt, by = c("sample", "tmp"))
+truth_long_dt <- unique(truth_long_dt, by = c("sample", "gene", "tmp"))
 truth_long_dt[, c("e1", "e2") := tstrsplit(tmp, ",", fixed = TRUE)]
 truth_long_dt[, ":="(tmp = NULL, D4_truth = NULL)]
 res_dt[, "tmp" := paste(D4, collapse = ","), by = list(sample, gene)]
-res_dt <- unique(res_dt, by = c("sample", "tmp"))
+res_dt <- unique(res_dt, by = c("sample", "gene", "tmp"))
 res_dt[, c("p1", "p2") := tstrsplit(tmp, ",", fixed = TRUE)]
 res_dt[, ":="(tmp = NULL, D4 = NULL, D6 = NULL)]
 
@@ -69,7 +69,8 @@ eval_dt[, n_match := apply(
   .SD, 1, evaluate
 ), .SDcols = c("p1", "p2", "e1", "e2")]
 print(eval_dt[n_match < 2])
-n_expect_to_match <- nrow(eval_dt) * 2
+n_sample <- length(unique(eval_dt$sample))
+n_expect_to_match <- n_sample * 6
 n_match <- sum(eval_dt$n_match)
 print(n_expect_to_match)
 print(n_match)
