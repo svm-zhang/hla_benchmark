@@ -20,7 +20,7 @@ Columns in the evaluation result files:
 ## Runtime profiling
 
 `polysolvermod` tries to have improved runtime over the original `polysolver`. The plot below demonstrates the runtime improvement on fishing + realignment.
-[!runtime](/benchmark/runtime.png)
+![runtime](/benchmark/runtime.png)
 
 ## Disclaimer
 
