@@ -37,7 +37,7 @@ function run_bam2fq() {
   fi
 
   prefix="${bam}.tmp."
-  samtools sort -T"$prefix" -@"$thread" -m 2G -n "$bam" 2>/dev/null\
+  samtools sort -T"$prefix" -@"$thread" -n "$bam" 2>/dev/null\
     | samtools bam2fq -1 "$r1" -2 "$r2" -0 /dev/null -s /dev/null - \
     || die "${FUNCNAME[0]}" "$LINENO" "Failed to get Fastq from BAM"
 
@@ -104,7 +104,7 @@ fi
 final_r1="${fq_dir}/${sample_id}.R1.fastq.gz"
 final_r2="${fq_dir}/${sample_id}.R2.fastq.gz"
 if [ ! -f "${final_r1}" ] || [ ! -f "${final_r2}" ]; then
-  info "main" "Extract Fastq from ${mapped_bam}"
+  info "main" "Extract Fastq from ${sort_bam}"
   run_bam2fq "${sort_bam}" "${final_r1}" "${final_r2}"
 else
   info "main" "Previous extraction was done. Skip"
