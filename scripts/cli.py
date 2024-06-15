@@ -41,8 +41,8 @@ def parse_cmd() -> argparse.ArgumentParser:
         metavar="STR",
         type=str,
         default="slurm",
-        choices=["slurm", "sge", "bash"],
-        help="specify name of job scheduler (slurm, sge, bash) [slurm]",
+        choices=["slurm", "bash"],
+        help="specify name of job scheduler (slurm, bash) [slurm]",
     )
     parent_parser.add_argument(
         "--realign_only",
@@ -70,52 +70,29 @@ def parse_cmd() -> argparse.ArgumentParser:
     )
 
     commands = parser.add_subparsers(title="Commands", dest="command")
-    hlareforged = commands.add_parser("hlareforged", parents=[parent_parser])
-    hlareforged.add_argument(
-        "--r1",
-        metavar="FILE",
-        type=parse_path,
-        required=True,
-        help="specify R1 reads in FASTQ",
-    )
-    hlareforged.add_argument(
-        "--r2",
-        metavar="FILE",
-        type=parse_path,
-        required=True,
-        help="specify R2 reads in FASTQ",
-    )
-    hlareforged.add_argument(
-        "--nproc_per_job",
-        metavar="INT",
-        type=int,
-        default=2,
-        help="specify the number of process per razers3 job [2]",
-    )
-
-    polysolver = commands.add_parser("polysolver", parents=[parent_parser])
-    polysolver.add_argument(
+    polysolvermod = commands.add_parser("polysolvermod", parents=[parent_parser])
+    polysolvermod.add_argument(
         "--bam",
         metavar="FILE",
         type=parse_path,
         required=True,
         help="specify BAM file",
     )
-    polysolver.add_argument(
+    polysolvermod.add_argument(
         "--bed",
         metavar="FILE",
         type=parse_path,
         required=True,
         help="specify HLA bed file",
     )
-    polysolver.add_argument(
+    polysolvermod.add_argument(
         "--tag",
         metavar="FILE",
         type=parse_path,
         required=True,
         help="specify HLA kmer tag file",
     )
-    polysolver.add_argument(
+    polysolvermod.add_argument(
         "--fish_mode",
         metavar="STR",
         type=str,
