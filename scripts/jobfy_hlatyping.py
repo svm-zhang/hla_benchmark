@@ -9,38 +9,10 @@ from job import jobfy
 
 
 @jobfy
-def run_hlareforged(args: argparse.Namespace):
+def run_polysolvermod(args: argparse.Namespace):
 
     cmd = Command(
-        "hlareforged",
-        "--sample",
-        args.sample,
-        "--r1",
-        args.r1,
-        "--r2",
-        args.r2,
-        "--hla_ref",
-        args.hlaref,
-        "--outdir",
-        args.wkdir,
-        "--nproc",
-        args.nproc,
-        "--nproc_per_job",
-        args.nproc_per_job,
-    )
-    if args.realign_only:
-        cmd += ["--realn_only"]
-    else:
-        cmd += ["--freq", args.freq]
-
-    return cmd
-
-
-@jobfy
-def run_hlapolysolver(args: argparse.Namespace):
-
-    cmd = Command(
-        "hlapolysolver",
+        "polysolvermod",
         "--sample",
         args.sample,
         "--bam",
@@ -75,14 +47,12 @@ def main() -> None:
     if not args.command:
         parser.print_help()
 
-    if args.command == "polysolver":
+    if args.command == "polysolvermod":
         run_hlapolysolver(args)
-    elif args.command == "hlareforged":
-        run_hlareforged(args)
     else:
         raise ValueError(
             f"Unrecognized subcommand: {args.command}. ",
-            "Supported commands: hlareforged, polysolver",
+            "Supported command: polysolvermod",
         )
 
 
