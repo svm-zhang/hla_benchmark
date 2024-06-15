@@ -35,6 +35,17 @@ To run all these tools, you will need:
 3. python >=3.8
 4. R with data.table and splitstackshape packages
 
+### Example: prepare 1kg data
+
+The command below downloads WES BAM (mapped and unmapped) from 1000 genome AWS S3 bucket, and generates sorted BAM file for running `polysolvemod`.
+
+```
+bash "$repo/scripts/prep_benchmark_data.sh" \
+    NA18740 \
+    "$outdir" \
+    "$nproc"
+```
+
 ## Disclaimer
 
 You should always take a grain of salt when looking at the results offered in this repo. I encourage you to have an independent evaluation of `polysolvermod`, as I am human and subject to make mistakes. Moreover, the accuracy profile is only based on a subset of 1000 genome populations, and I do not have the computing resource to run them all. Lastly, the accuracy shown here only provides guidance, and does not reflect the performance on real-world samples, such as the ones from a clinical trial.
