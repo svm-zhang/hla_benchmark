@@ -5,7 +5,7 @@ This repo hosts benchmark results of [polysolvermod](https://github.com/svm-zhan
 `polysolvermod` achieves similar accuracy as the original `polysovler` program (not suprisingly as the former is a re-engineered version of the latter). At 4-digit resolution `polysolvermod` accurately typed about 94% and 95% alleles for
 Asian and CEU samples, respectively. This is on par with the [benchmark study](https://www.nature.com/articles/jhg2016141) previously reported. The footprint of typing error at 4-digits is also similar what the paper reported, as `polysolvermod` has bettern typing accuracy for HLA A and C alleles, compared to the B allele.
 
-`polysolvermod` extends the capability of the original `polysolver` algorithm to Class II alleles. The accuracies on both Asian and CEU samples are well above 80%. And they get further boosted to 90% when controlling for number of mismatch events per alignment.
+`polysolvermod` extends the capability of the original `polysolver` algorithm to Class II alleles. The accuracies on both Asian and CEU samples are well above 80%. And they get further boosted to 90% when controlling for number of mismatch events per alignment. Note that these are typing accuracies only for allele HLA\*DRB1 and HLA\*DQB1, as 1000 genome project did not provide typing result for other Class II alleles.
 
 ## Understand benchmark files
 
@@ -48,4 +48,4 @@ bash "$repo/scripts/prep_benchmark_data.sh" \
 
 ## Disclaimer
 
-You should always take a grain of salt when looking at the results offered in this repo. I encourage you to have an independent evaluation of `polysolvermod`, as I am human and subject to make mistakes. Moreover, the accuracy profile is only based on a subset of 1000 genome populations, and I do not have the computing resource to run them all. Lastly, the accuracy shown here only provides guidance, and does not reflect the performance on real-world samples, such as the ones from a clinical trial.
+You should always take a grain of salt when looking at the results offered in this repo. I encourage you to have an independent evaluation of `polysolvermod`, as I am human and subject to make mistakes. Moreover, the accuracy profile is only based on a subset of 1000 genome populations, and I do not have the computing resource to run them all. Also, 1000 genome project provides typing results for only two Class II alleles, and therefore I cannot tell the accuracy on the other ones. Lastly, the accuracy shown here only provides guidance, and does not necessarily reflect the performance on real-world samples.
