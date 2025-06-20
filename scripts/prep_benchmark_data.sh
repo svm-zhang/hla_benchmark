@@ -46,6 +46,7 @@ function run_bam2fq() {
 sample_id=$1
 wkdir=$2
 thread=$3
+fq=$4 # fq==1: generate fq files
 
 sample_dir="${wkdir}/${sample_id}"
 bam_dir="${sample_dir}/bam"
@@ -54,10 +55,6 @@ log_dir="${sample_dir}/log"
 
 if [ ! -d "${bam_dir}" ]; then
   mkdir -p "${bam_dir}"
-fi
-
-if [ ! -d "${fq_dir}" ]; then
-  mkdir -p "${fq_dir}"
 fi
 
 if [ ! -d "${log_dir}" ]; then
@@ -101,13 +98,21 @@ if [ ! -f "$sort_bam" ]; then
     || die "$0" "$LINENO" "Failed to index sorted BAM file"
 fi
 
-final_r1="${fq_dir}/${sample_id}.R1.fastq.gz"
-final_r2="${fq_dir}/${sample_id}.R2.fastq.gz"
-if [ ! -f "${final_r1}" ] || [ ! -f "${final_r2}" ]; then
-  info "main" "Extract Fastq from ${sort_bam}"
-  run_bam2fq "${sort_bam}" "${final_r1}" "${final_r2}"
+if [ "$fq" -eq 1 ]; then
+  if [ ! -d "${fq_dir}" ]; then
+    mkdir -p "${fq_dir}"
+  fi
+
+  final_r1="${fq_dir}/${sample_id}.R1.fastq.gz"
+  final_r2="${fq_dir}/${sample_id}.R2.fastq.gz"
+  if [ ! -f "${final_r1}" ] || [ ! -f "${final_r2}" ]; then
+    info "main" "Extract Fastq from ${sort_bam}"
+    run_bam2fq "${sort_bam}" "${final_r1}" "${final_r2}"
+  else
+    info "main" "Previous extraction was done. Skip"
+  fi
 else
-  info "main" "Previous extraction was done. Skip"
+  info "main" "fq==0, no Fastq files are generated."
 fi
 
 all_done="${log_dir}/${sample_id}.prep.done"
